@@ -1,0 +1,55 @@
+# Project dependencies for PDF CV Ranker
+# GPU default: CUDA 12.1 wheels for PyTorch on Windows
+# For CPU-only: comment the extra index URL and use the CPU torch line at the bottom
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+# Core ML stack
+torch==2.5.1+cu121
+transformers==4.55.1
+accelerate==1.10.0
+peft==0.17.0
+bitsandbytes==0.47.0
+safetensors==0.6.2
+
+# PDF processing
+pdfplumber==0.11.7
+PyPDF2==3.0.1
+pdfminer-six==20250506
+pypdfium2
+
+# Web API and Utils
+Flask==3.1.1
+Werkzeug
+blinker==1.9.0
+click==8.2.1
+colorama==0.4.6
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.2
+
+# Data Processing and Utils
+numpy==2.3.2
+Pillow==11.3.0
+packaging==25.0
+filelock==3.18.0
+fsspec==2025.7.0
+networkx==3.5
+psutil==7.0.0
+tqdm
+mpmath==1.3.0
+sympy
+
+# Security and Networking
+cryptography==45.0.6
+certifi==2025.8.3
+charset-normalizer==3.4.3
+idna==3.10
+cffi==1.17.1
+pycparser==2.22
+
+# Hugging Face
+huggingface-hub==0.34.4
+
+# CPU-only alternative (uncomment and remove extra-index above if needed)
+# torch==2.5.1

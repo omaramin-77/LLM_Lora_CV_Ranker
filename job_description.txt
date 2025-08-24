@@ -1,0 +1,36 @@
+Job Purpose:
+
+Oversee the planning and delivery of AI-powered language and conversational solutions, with a focus on Natural Language Processing (NLP) and Conversational AI. The role requires a professional with a strong understanding of AI workflows, project steps, and delivery procedures, capable of managing project plans, timelines, and handovers. While the position involves close collaboration with the technical team for implementation, it does not require hands-on coding or model development. The key objective is to ensure successful project delivery aligned with business needs and seamless integration into user-facing applications.
+
+
+Key Responsibilities:
+
+Conversational AI Development:
+ Design and develop AI models specialized in natural language understanding and conversational interactions.
+Model Implementation:
+ Utilize modern AI frameworks and libraries (e.g., OpenAI APIs, HuggingFace Transformers, LLMs) to build and deploy intelligent response systems.
+System Integration:
+ Collaborate with front-end and product teams to integrate AI models seamlessly into user-facing interfaces, ensuring smooth and efficient user experiences.
+Model Training & Optimization:
+ Continuously fine-tune and improve models using interaction data, user feedback, and real-time usage analytics.
+Cross-Functional Collaboration:
+ Work closely with Product, UX/UI, and Frontend teams to align technical capabilities with business goals and visual experiences.
+Performance Monitoring:
+ Track model performance, accuracy, and response quality, implementing enhancements to improve efficiency and relevance.
+
+
+Qualifications & Skills:
+
+Bachelor’s or Master’s degree in Computer Science, AI, Data Science, or a related field.
+Proven experience in Natural Language Processing (NLP), Conversational AI, or LLM-based applications.
+Hands-on experience with Python and AI frameworks (e.g., TensorFlow, PyTorch, HuggingFace, LangChain).
+Experience in deploying and integrating AI models into production systems and web applications.
+Familiarity with API development, cloud services (AWS/GCP/Azure), and MLOps is a plus.
+Strong problem-solving skills and the ability to work collaboratively in cross-functional teams.
+
+
+Preferred Experience:
+
+Building chatbots or conversational assistants using LLMs.
+Handling real-time user interactions and optimizing for response speed and relevance.
+Experience with fine-tuning pre-trained models and prompt engineering for LLMs.

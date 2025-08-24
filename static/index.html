@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CV Ranker Demo</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0; }
+    header { padding: 16px; background: #0d6efd; color: #fff; }
+    main { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; }
+    input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    textarea { min-height: 160px; resize: vertical; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 280px; }
+    .actions { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+    button { background: #0d6efd; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .muted { color: #666; font-size: 13px; }
+    pre { background: #111; color: #f5f5f5; padding: 12px; border-radius: 8px; overflow: auto; }
+    .hidden { display: none; }
+    .pill { display: inline-block; background: #eef; color: #224; border-radius: 999px; padding: 4px 10px; font-size: 12px; margin-right: 6px; }
+  </style>
+  <script>
+    async function submitForm(ev) {
+      ev.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const jobDescription = document.getElementById('job_description').value.trim();
+      const cvFile = document.getElementById('cv_file').files[0];
+      
+
+      const status = document.getElementById('status');
+      const resultSection = document.getElementById('resultSection');
+      const resultPre = document.getElementById('resultPre');
+      const resultPretty = document.getElementById('resultPretty');
+
+      resultSection.classList.add('hidden');
+      status.textContent = 'Uploading and processing...';
+
+      if (!email || !jobDescription || !cvFile) {
+        status.textContent = 'Please provide email, job description, and a PDF CV file.';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('job_description', jobDescription);
+      formData.append('cv_file', cvFile);
+      
+
+      try {
+        const resp = await fetch('/api/rank_cv', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          status.textContent = 'Error: ' + (data.error || resp.statusText);
+          return;
+        }
+
+        status.textContent = 'Done.';
+        resultPre.textContent = JSON.stringify(data, null, 2);
+        fillPretty(data);
+        resultSection.classList.remove('hidden');
+      } catch (err) {
+        status.textContent = 'Network or server error: ' + err;
+      }
+    }
+
+    function fillPretty(data) {
+      const email = data?.email || '';
+      const r = data?.result || {};
+      document.getElementById('prettyEmail').textContent = email;
+      document.getElementById('prettyCvFile').textContent = r.cv_filename || '';
+      document.getElementById('prettyScore').textContent = `${r.overall_score ?? ''}/100`;
+      document.getElementById('prettyReco').textContent = r.recommendation || '';
+      document.getElementById('prettySummary').textContent = r.summary || '';
+
+
+      const strengths = Array.isArray(r.key_strengths) ? r.key_strengths : (r.key_strengths ? [r.key_strengths] : []);
+      const gaps = Array.isArray(r.key_gaps) ? r.key_gaps : (r.key_gaps ? [r.key_gaps] : []);
+      const strengthsEl = document.getElementById('prettyStrengths');
+      const gapsEl = document.getElementById('prettyGaps');
+      strengthsEl.innerHTML = strengths.slice(0, 5).map(s => `<span class="pill">${escapeHtml(String(s))}</span>`).join(' ');
+      gapsEl.innerHTML = gaps.slice(0, 5).map(g => `<span class="pill" style="background:#fee;color:#422">${escapeHtml(String(g))}</span>`).join(' ');
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+  </script>
+  </head>
+<body>
+  <header>
+    <h1>CV Ranker Demo</h1>
+    <div class="muted">Send an email, job description and a PDF CV to the API.</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <form id="rankForm" onsubmit="submitForm(event)">
+        <div class="row">
+          <div>
+            <label for="email">Applicant Email</label>
+            <input type="text" id="email" name="email" placeholder="applicant@example.com" />
+          </div>
+        </div>
+        <div>
+          <label for="job_description">Job Description</label>
+          <textarea id="job_description" name="job_description" placeholder="Paste job description here..."></textarea>
+        </div>
+        <div class="row">
+          <div>
+            <label for="cv_file">CV PDF</label>
+            <input type="file" id="cv_file" name="cv_file" accept="application/pdf" />
+          </div>
+          
+        </div>
+        <div class="actions">
+          <button type="submit">Submit</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </form>
+    </section>
+
+    <section id="resultSection" class="card hidden">
+      <h3>Result</h3>
+      <div class="row">
+        <div>
+          <div class="muted">Email</div>
+          <div id="prettyEmail"></div>
+        </div>
+        <div>
+          <div class="muted">CV File</div>
+          <div id="prettyCvFile"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <div class="muted">Overall</div>
+          <div id="prettyScore"></div>
+        </div>
+        <div>
+          <div class="muted">Recommendation</div>
+          <div id="prettyReco"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="muted">Strengths</div>
+        <div id="prettyStrengths"></div>
+      </div>
+      <div>
+        <div class="muted">Gaps</div>
+        <div id="prettyGaps"></div>
+      </div>
+      <div>
+        <div class="muted">Summary</div>
+        <div id="prettySummary"></div>
+      </div>
+      <h4>Raw JSON</h4>
+      <pre id="resultPre"></pre>
+    </section>
+  </main>
+  </body>
+  </html>
+
+
