@@ -3,6 +3,7 @@
 PDF CV Ranker - Main module for ranking PDF CVs against job descriptions
 Uses LlamaFactoryAI/Llama-3.1-8B-Instruct-cv-job-description-matching LoRA model
 Updated with robust JSON parsing to handle malformed responses
+Enhanced with multi-language support - automatically detects and translates non-English CVs
 """
 
 import torch
@@ -13,6 +14,13 @@ import PyPDF2
 from pathlib import Path
 from typing import List, Dict
 import logging
+import os
+import requests
+from langdetect import detect
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import the robust JSON parser (save the previous artifact as robust_json_parser.py)
 from robust_json_parser import RobustJSONParser
@@ -152,6 +160,169 @@ class PDFCVRanker:
             logger.info(f"📊 GPU Memory - Allocated: {memory_allocated:.2f}GB, Reserved: {memory_reserved:.2f}GB")
 
         logger.info("✅ Model loaded successfully!")
+
+    def detect_language(self, text: str) -> str:
+        """
+        Detect language of text using langdetect
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            Language code (e.g., 'en', 'ar', 'fr') or 'en' if detection fails
+        """
+        try:
+            if not text or len(text.strip()) < 10:
+                logger.warning("Text too short for language detection, assuming English")
+                return 'en'
+            
+            # Clean text for better detection
+            cleaned_text = ' '.join(text.split())
+            detected_lang = detect(cleaned_text)
+            logger.info(f"Detected language: {detected_lang}")
+            return detected_lang
+        except Exception as e:
+            logger.warning(f"Language detection failed: {e}, assuming English")
+            return 'en'
+    
+    def upload_pdf_to_chatpdf(self, pdf_path: Path, api_key: str) -> str:
+        """
+        Upload PDF to ChatPDF and return source ID
+        
+        Args:
+            pdf_path: Path to PDF file
+            api_key: ChatPDF API key
+            
+        Returns:
+            Source ID from ChatPDF or None if failed
+        """
+        try:
+            headers = {'x-api-key': api_key}
+            with open(pdf_path, 'rb') as pdf_file:
+                files = {'file': (pdf_path.name, pdf_file, 'application/pdf')}
+                response = requests.post(
+                    'https://api.chatpdf.com/v1/sources/add-file',
+                    headers=headers,
+                    files=files,
+                    timeout=120
+                )
+                if response.status_code == 200:
+                    source_id = response.json().get('sourceId')
+                    logger.info(f"PDF uploaded to ChatPDF with ID: {source_id}")
+                    return source_id
+                else:
+                    logger.error(f"ChatPDF upload failed: {response.status_code} - {response.text}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error uploading PDF to ChatPDF: {e}")
+            return None
+    
+    def translate_with_chatpdf(self, source_id: str, api_key: str) -> str:
+        """
+        Request translation from ChatPDF
+        
+        Args:
+            source_id: ChatPDF source ID
+            api_key: ChatPDF API key
+            
+        Returns:
+            Translated text or None if failed
+        """
+        try:
+            headers = {'x-api-key': api_key, 'Content-Type': 'application/json'}
+
+            # Now translate
+            translate_payload = {
+                'sourceId': source_id,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': 'Convert the above text to English. Translate every single word and section. Format as a proper CV with:\n\nName: [translated name]\nEmail: [keep exact email]\nPhone: [keep exact phone]\nLocation: [translate location]\nObjective: [translate career objective]\nEducation: [translate education with degrees, universities, dates, GPA]\nExperience: [translate work experience with job titles, companies, dates]\nSkills: [translate all skills]\nCertifications: [translate certifications]\nLanguages: [translate languages]\n\nTranslate everything to professional English while keeping numbers, dates, and contact info unchanged.'
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                'https://api.chatpdf.com/v1/chats/message',
+                headers=headers,
+                json=translate_payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                translated_text = response.json().get('content', '').strip()
+                logger.info("CV translation completed successfully")
+                return translated_text
+            else:
+                logger.error(f"ChatPDF translation failed: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error during ChatPDF translation: {e}")
+            return None
+    
+    def cleanup_chatpdf(self, source_id: str, api_key: str):
+        """
+        Delete uploaded PDF from ChatPDF
+        
+        Args:
+            source_id: ChatPDF source ID
+            api_key: ChatPDF API key
+        """
+        try:
+            headers = {'x-api-key': api_key}
+            requests.post(
+                'https://api.chatpdf.com/v1/sources/delete',
+                headers=headers,
+                json={'sources': [source_id]},
+                timeout=30
+            )
+            logger.debug(f"Cleaned up ChatPDF source: {source_id}")
+        except Exception as e:
+            logger.debug(f"ChatPDF cleanup failed (non-critical): {e}")
+
+    def translate_job_description(self, job_description: str, api_key: str) -> str:
+        """
+        Translate job description to English using ChatPDF API
+        
+        Args:
+            job_description: Job description text to translate
+            api_key: ChatPDF API key
+            
+        Returns:
+            Translated job description or original if translation fails
+        """
+        try:
+            headers = {'x-api-key': api_key, 'Content-Type': 'application/json'}
+            
+            # Create a temporary text-based conversation for translation
+            translate_payload = {
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': f'Translate the following job description to professional English. Keep all technical terms, requirements, and qualifications accurate. Maintain the structure and formatting:\n\n{job_description}'
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                'https://api.chatpdf.com/v1/chats/message',
+                headers=headers,
+                json=translate_payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                translated_text = response.json().get('content', '').strip()
+                logger.info("Job description translation completed successfully")
+                return translated_text
+            else:
+                logger.warning(f"Job description translation failed: {response.status_code}, using original")
+                return job_description
+                
+        except Exception as e:
+            logger.warning(f"Error translating job description: {e}, using original")
+            return job_description
     
     def extract_text_from_pdf(self, pdf_path: Path) -> str:
         """
@@ -379,6 +550,41 @@ Analyze this CV against the job requirements. Respond with ONLY this exact JSON 
                 "overall_score": 0
             }
         
+        # Detect language
+        detected_lang = self.detect_language(cv_text)
+        if detected_lang != 'en':
+            # Translate non-English CVs
+            api_key = os.getenv('CHATPDF_API_KEY')
+            if not api_key:
+                logger.error("CHATPDF_API_KEY not set, skipping translation")
+                return {
+                    "cv_filename": cv_path.name,
+                    "error": "Translation failed due to missing API key",
+                    "overall_score": 0
+                }
+            
+            source_id = self.upload_pdf_to_chatpdf(cv_path, api_key)
+            if not source_id:
+                logger.error("Failed to upload PDF to ChatPDF, skipping translation")
+                return {
+                    "cv_filename": cv_path.name,
+                    "error": "Translation failed due to upload error",
+                    "overall_score": 0
+                }
+            
+            translated_text = self.translate_with_chatpdf(source_id, api_key)
+            if not translated_text:
+                logger.error("Failed to translate CV, skipping ranking")
+                self.cleanup_chatpdf(source_id, api_key)
+                return {
+                    "cv_filename": cv_path.name,
+                    "error": "Translation failed",
+                    "overall_score": 0
+                }
+            
+            cv_text = translated_text
+            self.cleanup_chatpdf(source_id, api_key)
+        
         # Generate ranking using chat template with retry logic
         prompt = self.create_ranking_prompt(job_description, cv_text)
         if debug:
@@ -411,6 +617,22 @@ Analyze this CV against the job requirements. Respond with ONLY this exact JSON 
         """
         # Load job description
         job_description = self.load_job_description(job_desc_path)
+        
+        # Detect language of job description
+        detected_lang = self.detect_language(job_description)
+        if detected_lang != 'en':
+            # Translate non-English job description
+            api_key = os.getenv('CHATPDF_API_KEY')
+            if not api_key:
+                logger.error("CHATPDF_API_KEY not set, skipping translation")
+                return []
+            
+            translated_job_description = self.translate_job_description(job_description, api_key)
+            if not translated_job_description:
+                logger.error("Failed to translate job description, skipping ranking")
+                return []
+            
+            job_description = translated_job_description
         
         # Find PDF files
         pdf_files = self.find_pdf_files(cv_folder_path)

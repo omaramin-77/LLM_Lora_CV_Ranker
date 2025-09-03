@@ -84,8 +84,6 @@ def api_rank_cv():
             return jsonify({"error": "Missing 'cv_file'"}), 400
 
         filename = secure_filename(file.filename)
-        if not filename.lower().endswith(".pdf"):
-            return jsonify({"error": "cv_file must be a PDF"}), 400
 
         # Save to a temp file for processing
         tmp_dir = Path(tempfile.gettempdir()) / "cv_ranker_uploads"

@@ -1,9 +1,10 @@
 # PDF CV Ranker (Llama 3.1 + LoRA)
 
-Analyze and rank PDF CVs against a job description using a local Llama 3.1 8B model with a CV-matching LoRA. Includes a CLI runner and a Flask API.
+Analyze and rank PDF CVs against a job description using a local Llama 3.1 8B model with a CV-matching LoRA. Includes automatic language detection and translation for non-English CVs, CLI runner, and Flask API.
 
 ## Features
 - Rank multiple PDF CVs against a job description
+- **Automatic language detection and translation** - supports non-English CVs via ChatPDF API
 - Local-first with optional online model download via Hugging Face
 - Robust JSON parsing for imperfect model outputs
 - Web API endpoint for uploading a single PDF and getting a result
@@ -89,6 +90,38 @@ curl -X POST http://localhost:5000/api/rank_cv \
   -F "cv_file=@pdf_cvs/example.pdf"
 ```
 
+## API Configuration
+
+### Environment Variables
+Create a `.env` file based on `.env.example`:
+
+```bash
+# Required for non-English CV translation
+CHATPDF_API_KEY=your_chatpdf_api_key_here
+```
+
+### Getting ChatPDF API Key
+1. Visit [ChatPDF](https://www.chatpdf.com/)
+2. Sign up for an account
+3. Navigate to API settings to get your API key
+4. Add the key to your `.env` file
+
+**Note**: If no API key is provided, the system will still work but only process English CVs. Non-English CVs will be skipped with a warning.
+
+## Language Support
+
+The system automatically detects the language of uploaded CVs:
+- **English CVs**: Processed directly by the ranking model
+- **Non-English CVs**: Automatically translated to English using ChatPDF API before ranking
+- **Supported languages**: All languages supported by ChatPDF (Arabic, Spanish, French, German, Chinese, etc.)
+
+Translation process:
+1. Language detection using `langdetect`
+2. If non-English detected, CV is uploaded to ChatPDF
+3. Translation request sent to ChatPDF API
+4. Translated English text is used for ranking
+5. Original filename and language info preserved in results
+
 ## Models
 - Base: `meta-llama/Llama-3.1-8B-Instruct`
 - LoRA: `LlamaFactoryAI/Llama-3.1-8B-Instruct-cv-job-description-matching`
@@ -115,5 +148,3 @@ If not present, they will be downloaded automatically to `models/` cache.
 
 ## License
 See the model licenses and project license files where applicable.
-
-
