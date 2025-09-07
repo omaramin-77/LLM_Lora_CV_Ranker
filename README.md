@@ -2,6 +2,10 @@
 
 Analyze and rank PDF CVs against a job description using a local Llama 3.1 8B model with a CV-matching LoRA. Includes automatic language detection and translation for non-English CVs, CLI runner, and Flask API.
 
+## Contributors
+- [Omar Amin](https://github.com/omaramin-77)
+- [Marwan Ghazal](https://github.com/marwan-ghazal)
+
 ## Features
 - Rank multiple PDF CVs against a job description
 - **Automatic language detection and translation** - supports non-English CVs via ChatPDF API
