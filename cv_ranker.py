@@ -32,33 +32,46 @@ logger = logging.getLogger(__name__)
 class PDFCVRanker:
     def __init__(self, models_folder: str = "models", force_gpu: bool = True):
         """
-        Initialize the PDF CV Ranker with local Llama model and LoRA extension, or download from Hugging Face if not found locally.
+        Initialize the PDF CV Ranker with conditional model loading based on USE_LOCAL environment variable.
         Args:
             models_folder: Path to folder containing llama and lora models
-            force_gpu: If True, will raise error if GPU not available
+            force_gpu: If True, will raise error if GPU not available (only used when USE_LOCAL=true)
         """
         self.models_folder = Path(models_folder)
         self.json_parser = RobustJSONParser()
-        self._setup_device(force_gpu)
+        
+        # Check USE_LOCAL environment variable to determine if we need to load models
+        self.use_local = os.getenv('USE_LOCAL', 'true').lower() == 'true'
+        
+        if self.use_local:
+            logger.info("🔧 USE_LOCAL=true - Initializing local Llama model...")
+            self._setup_device(force_gpu)
 
-        # Model names for Hugging Face
-        self.hf_base_model = "meta-llama/Llama-3.1-8B-Instruct"
-        self.hf_lora_model = "LlamaFactoryAI/Llama-3.1-8B-Instruct-cv-job-description-matching"
+            # Model names for Hugging Face
+            self.hf_base_model = "meta-llama/Llama-3.1-8B-Instruct"
+            self.hf_lora_model = "LlamaFactoryAI/Llama-3.1-8B-Instruct-cv-job-description-matching"
 
-        # Local model paths
-        self.base_model_path = self.models_folder / "llama-3.1-8b-instruct"
-        self.lora_model_path = self.models_folder / "lora-cv-match"
+            # Local model paths
+            self.base_model_path = self.models_folder / "llama-3.1-8b-instruct"
+            self.lora_model_path = self.models_folder / "lora-cv-match"
 
-        # Check if local models exist, else use Hugging Face
-        self.use_local_base = self.base_model_path.exists()
-        self.use_local_lora = self.lora_model_path.exists()
+            # Check if local models exist, else use Hugging Face
+            self.use_local_base = self.base_model_path.exists()
+            self.use_local_lora = self.lora_model_path.exists()
 
-        if not self.use_local_base:
-            logger.warning(f"Base model not found locally at {self.base_model_path}, will use Hugging Face: {self.hf_base_model}")
-        if not self.use_local_lora:
-            logger.warning(f"LoRA model not found locally at {self.lora_model_path}, will use Hugging Face: {self.hf_lora_model}")
+            if not self.use_local_base:
+                logger.warning(f"Base model not found locally at {self.base_model_path}, will use Hugging Face: {self.hf_base_model}")
+            if not self.use_local_lora:
+                logger.warning(f"LoRA model not found locally at {self.lora_model_path}, will use Hugging Face: {self.hf_lora_model}")
 
-        self._load_models()
+            self._load_models()
+        else:
+            logger.info("🌐 USE_LOCAL=false - Skipping model loading, will use ChatPDF API for ranking")
+            # Initialize minimal attributes for ChatPDF-only mode
+            self.device = None
+            self.tokenizer = None
+            self.model = None
+            self.base_model = None
     
     def _setup_device(self, force_gpu: bool = True):
         """Setup device configuration with detailed GPU information"""
@@ -261,6 +274,62 @@ class PDFCVRanker:
             logger.error(f"Error during ChatPDF translation: {e}")
             return None
     
+    def rank_with_chatpdf(self, prompt: str, cv_path: Path, api_key: str) -> str:
+        """
+        Send ranking prompt to ChatPDF API for processing by uploading the CV and sending the prompt
+        
+        Args:
+            prompt: The complete ranking prompt
+            cv_path: Path to the CV PDF file
+            api_key: ChatPDF API key
+            
+        Returns:
+            Response from ChatPDF or None if failed
+        """
+        source_id = None
+        try:
+            # Upload the CV PDF to ChatPDF to get a source ID
+            source_id = self.upload_pdf_to_chatpdf(cv_path, api_key)
+            if not source_id:
+                logger.error("Failed to upload CV to ChatPDF for ranking")
+                return None
+            
+            # Send the ranking prompt to ChatPDF
+            headers = {'x-api-key': api_key, 'Content-Type': 'application/json'}
+            
+            payload = {
+                'sourceId': source_id,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': prompt
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                'https://api.chatpdf.com/v1/chats/message',
+                headers=headers,
+                json=payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                result = response.json().get('content', '').strip()
+                logger.info("ChatPDF ranking completed successfully")
+                return result
+            else:
+                logger.error(f"ChatPDF ranking failed: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error during ChatPDF ranking: {e}")
+            return None
+        finally:
+            # Clean up the uploaded document
+            if source_id:
+                self.cleanup_chatpdf(source_id, api_key)
+
     def cleanup_chatpdf(self, source_id: str, api_key: str):
         """
         Delete uploaded PDF from ChatPDF
@@ -446,8 +515,31 @@ Analyze this CV against the job requirements. Respond with ONLY this exact JSON 
 """
         return prompt
     
+    def create_chatpdf_ranking_prompt(self, job_description: str) -> str:
+        """Create optimized prompt for CV ranking with ChatPDF API (CV is already uploaded)"""
+        prompt = f"""You are an expert HR recruiter specializing in CV analysis. Your task is to analyze the uploaded CV against the job description and provide a detailed assessment in JSON format.
+
+CRITICAL: You must respond with ONLY valid JSON. No additional text before or after. The JSON must be properly formatted with correct syntax.
+
+Job Description:
+{job_description[:3000]}
+
+Analyze the uploaded CV against the job requirements. Respond with ONLY this exact JSON format (ensure proper comma placement and quote escaping):
+
+{{
+    "matching_analysis": "Your detailed analysis here (keep under 300 characters)",
+    "description": "Brief summary here (keep under 200 characters)", 
+    "score": 100,
+    "recommendation": "Your recommendation here (keep under 200 characters)"
+}}"""
+        return prompt
+    
     def generate_ranking(self, prompt: str, max_retries: int = 2) -> str:
         """Generate CV ranking using the local model with retry logic"""
+        
+        # Check if model is loaded (only available when USE_LOCAL=true)
+        if not self.use_local or self.model is None:
+            raise RuntimeError("Local model not loaded. Cannot use generate_ranking when USE_LOCAL=false")
         
         for attempt in range(max_retries + 1):
             try:
@@ -495,7 +587,7 @@ Analyze this CV against the job requirements. Respond with ONLY this exact JSON 
                     torch.cuda.empty_cache()
                 
                 response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                
+
                 # Extract only the assistant response (after the prompt)
                 if "<|start_header_id|>assistant<|end_header_id|>" in response:
                     assistant_response = response.split("<|start_header_id|>assistant<|end_header_id|>")[-1].strip()
@@ -590,7 +682,31 @@ Analyze this CV against the job requirements. Respond with ONLY this exact JSON 
         if debug:
             logger.debug(f"Prompt created for {cv_path.name}")
         
-        response = self.generate_ranking(prompt)
+        # Use instance variable to determine ranking method
+        if self.use_local:
+            # Use local Llama model with full prompt including CV text
+            response = self.generate_ranking(prompt)
+        else:
+            # Use ChatPDF API with job description only (CV is uploaded separately)
+            api_key = os.getenv('CHATPDF_API_KEY')
+            if not api_key:
+                logger.error("CHATPDF_API_KEY not set, cannot use ChatPDF for ranking")
+                return {
+                    "cv_filename": cv_path.name,
+                    "error": "ChatPDF ranking failed due to missing API key",
+                    "overall_score": 0
+                }
+            
+            # Create ChatPDF-specific prompt (without CV text since PDF is uploaded)
+            chatpdf_prompt = self.create_chatpdf_ranking_prompt(job_description)
+            response = self.rank_with_chatpdf(chatpdf_prompt, cv_path, api_key)
+            if not response:
+                logger.error("ChatPDF ranking failed, falling back to error response")
+                return {
+                    "cv_filename": cv_path.name,
+                    "error": "ChatPDF ranking failed",
+                    "overall_score": 0
+                }
         
         if debug:
             logger.debug(f"Response length: {len(response)} characters")

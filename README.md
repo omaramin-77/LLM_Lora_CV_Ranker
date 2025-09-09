@@ -1,15 +1,13 @@
 # PDF CV Ranker (Llama 3.1 + LoRA)
 
-Analyze and rank PDF CVs against a job description using a local Llama 3.1 8B model with a CV-matching LoRA. Includes automatic language detection and translation for non-English CVs, CLI runner, and Flask API.
-
-## Contributors
-- [Omar Amin](https://github.com/omaramin-77)
-- [Marwan Ghazal](https://github.com/marwan-ghazal)
+Analyze and rank PDF CVs against a job description using either a local Llama 3.1 8B model with LoRA or ChatPDF API. Includes automatic language detection and translation for non-English CVs, CLI runner, and Flask API.
 
 ## Features
 - Rank multiple PDF CVs against a job description
+- **Dual ranking modes**: Local Llama model or ChatPDF API
 - **Automatic language detection and translation** - supports non-English CVs via ChatPDF API
 - Local-first with optional online model download via Hugging Face
+- Cloud-ready with ChatPDF-only mode (no local model required)
 - Robust JSON parsing for imperfect model outputs
 - Web API endpoint for uploading a single PDF and getting a result
 
@@ -19,6 +17,8 @@ Analyze and rank PDF CVs against a job description using a local Llama 3.1 8B mo
 - For GPU acceleration: NVIDIA GPU with CUDA 12.1 runtime
 
 ## Minimum System Requirements
+
+### Local Model Mode (USE_LOCAL=true)
 - OS: Windows 10/11 (64-bit) or Ubuntu 20.04+/Debian 12+; macOS (CPU-only)
 - Python: 3.10 or 3.11
 - CPU RAM: 12 GB minimum (16 GB recommended)
@@ -29,9 +29,19 @@ Analyze and rank PDF CVs against a job description using a local Llama 3.1 8B mo
 - Network: Required on first run to download models if `models/` is empty
   - Offline use: Place base model in `models/llama-3.1-8b-instruct/` and LoRA in `models/lora-cv-match/`
 
+### ChatPDF API Mode (USE_LOCAL=false)
+- OS: Any OS supporting Python 3.10+
+- Python: 3.10 or 3.11
+- CPU RAM: 2 GB minimum
+- GPU: Not required
+- Disk Space: 1 GB for application and results
+- Network: Required for ChatPDF API calls
+- ChatPDF API Key: Required (see configuration section)
+
 Notes:
-- CPU mode is supported but slow; set `force_gpu=False` in `test.py` if no GPU.
-- Verify GPU is visible to PyTorch:
+- CPU mode is supported but slow for local models; set `force_gpu=False` in `test.py` if no GPU.
+- ChatPDF mode bypasses all local model requirements and works on any system with internet access.
+- Verify GPU is visible to PyTorch (local mode only):
   ```bash
   python -c "import torch; print(torch.cuda.is_available())"
   ```
@@ -64,18 +74,45 @@ Notes:
 - Put your job description text in `job_description.txt`.
 - Place PDFs to evaluate in `pdf_cvs/`.
 
-### 4) Run the CLI
+### 4) Configure ranking mode (optional)
+Create a `.env` file based on `.env.example`:
+```bash
+# Use local Llama model (true) or ChatPDF API (false) for ranking
+USE_LOCAL=true
+
+# Required for ChatPDF API mode and non-English CV translation
+CHATPDF_API_KEY=your_chatpdf_api_key_here
+```
+
+### 5) Run the CLI
 ```bash
 python test.py
 ```
 This will:
-- Load local models from `models/` if present, else download from Hugging Face
+- **Local mode (USE_LOCAL=true)**: Load local models from `models/` if present, else download from Hugging Face
+- **ChatPDF mode (USE_LOCAL=false)**: Skip model loading and use ChatPDF API for ranking
 - Process all PDFs in `pdf_cvs/`
 - Save results JSON to `results/` and print a summary
 
-## GPU vs CPU
-- By default the CLI requires a GPU. To allow CPU fallback, change `force_gpu` to `False` in `test.py` config or in `cv_ranker.PDFCVRanker` initialization.
+## Ranking Modes
+
+### Local Model Mode (USE_LOCAL=true)
+- Uses local Llama 3.1 8B model with LoRA for CV ranking
+- Requires GPU/CPU resources and model downloads
+- Fully offline after initial setup
+- Higher accuracy for specialized CV ranking tasks
+
+### ChatPDF API Mode (USE_LOCAL=false)
+- Uses ChatPDF API for CV ranking
+- No local model requirements
+- Requires internet connection and API key
+- Faster startup and lower resource usage
+- Good for cloud deployments and systems without GPU
+
+## GPU vs CPU (Local Mode Only)
+- By default the CLI requires a GPU when using local models. To allow CPU fallback, change `force_gpu` to `False` in `test.py` config or in `cv_ranker.PDFCVRanker` initialization.
 - For the API, set env var `FORCE_GPU=1` to require GPU, otherwise it will allow CPU.
+- ChatPDF mode bypasses GPU/CPU requirements entirely.
 
 ## Running the API
 ```bash
@@ -100,7 +137,10 @@ curl -X POST http://localhost:5000/api/rank_cv \
 Create a `.env` file based on `.env.example`:
 
 ```bash
-# Required for non-English CV translation
+# Use local Llama model (true) or ChatPDF API (false) for ranking
+USE_LOCAL=true
+
+# Required for ChatPDF API mode and non-English CV translation
 CHATPDF_API_KEY=your_chatpdf_api_key_here
 ```
 
@@ -110,7 +150,9 @@ CHATPDF_API_KEY=your_chatpdf_api_key_here
 3. Navigate to API settings to get your API key
 4. Add the key to your `.env` file
 
-**Note**: If no API key is provided, the system will still work but only process English CVs. Non-English CVs will be skipped with a warning.
+**Note**: 
+- If `USE_LOCAL=false` and no API key is provided, the system will fail to rank CVs
+- If `USE_LOCAL=true` and no API key is provided, the system will still work for English CVs but skip non-English CVs with a warning
 
 ## Language Support
 
